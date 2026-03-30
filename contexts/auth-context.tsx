@@ -1,12 +1,30 @@
 import type { Session, User } from "@supabase/supabase-js";
+import * as Linking from "expo-linking";
 import type { ReactNode } from "react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { supabase } from "@/lib/supabase";
 
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
 type UserProfile = {
   display_name: string | null;
   email: string | null;
+};
+
+export type AuthDebugInfo = {
+  emailUsed: string;
+  hasSession: boolean;
+  code?: string;
+  status?: number;
+  emailConfirmedAt?: string | null;
+};
+
+export type AuthOperationResult = {
+  error: Error | null;
+  debug: AuthDebugInfo;
 };
 
 type AuthContextValue = {
@@ -14,13 +32,26 @@ type AuthContextValue = {
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signIn: (email: string, password: string) => Promise<AuthOperationResult>;
+  signUp: (email: string, password: string) => Promise<AuthOperationResult>;
+  resetPassword: (email: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+function profileFromUser(user: User): UserProfile {
+  const meta = user.user_metadata as Record<string, unknown> | undefined;
+  const fromMeta =
+    typeof meta?.display_name === "string" && meta.display_name.trim() !== ""
+      ? meta.display_name
+      : null;
+  return {
+    display_name: fromMeta ?? user.email?.split("@")[0] ?? null,
+    email: user.email ?? null,
+  };
+}
 
 async function fetchProfile(userId: string): Promise<UserProfile | null> {
   const { data, error } = await supabase
@@ -30,7 +61,12 @@ async function fetchProfile(userId: string): Promise<UserProfile | null> {
     .maybeSingle();
 
   if (error) {
-    console.warn("profiles fetch:", error.message);
+    const missingTable =
+      error.message.includes("schema cache") ||
+      error.message.includes("Could not find the table");
+    if (!missingTable) {
+      console.warn("profiles fetch:", error.message);
+    }
     return null;
   }
 
@@ -43,14 +79,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const refreshProfile = useCallback(async () => {
-    const uid = session?.user?.id;
-    if (!uid) {
+    const user = session?.user;
+    if (!user) {
       setProfile(null);
       return;
     }
-    const row = await fetchProfile(uid);
-    setProfile(row);
-  }, [session?.user?.id]);
+    const row = await fetchProfile(user.id);
+    setProfile(row ?? profileFromUser(user));
+  }, [session?.user]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: s } }) => {
@@ -68,24 +104,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const user = session?.user;
+    if (!user) {
+      setProfile(null);
+      return;
+    }
     void (async () => {
-      const uid = session?.user?.id;
-      if (!uid) {
-        setProfile(null);
-        return;
-      }
-      const row = await fetchProfile(uid);
-      setProfile(row);
+      const row = await fetchProfile(user.id);
+      setProfile(row ?? profileFromUser(user));
     })();
-  }, [session?.user?.id]);
+  }, [session?.user?.id, session?.user?.email, session?.user?.user_metadata]);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    return { error: error ? new Error(error.message) : null };
+    const trimmed = normalizeEmail(email);
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: trimmed,
+      password,
+    });
+
+    const debug: AuthDebugInfo = {
+      emailUsed: trimmed,
+      hasSession: !!data?.session,
+      code: error?.code,
+      status: typeof error?.status === "number" ? error.status : undefined,
+      emailConfirmedAt: data?.user?.email_confirmed_at ?? null,
+    };
+
+    if (__DEV__) {
+      console.log("[auth] signIn", {
+        email: trimmed,
+        passwordLength: password.length,
+        ...debug,
+        message: error?.message,
+      });
+    }
+
+    return {
+      error: error ? new Error(error.message) : null,
+      debug,
+    };
   }, []);
 
   const signUp = useCallback(async (email: string, password: string) => {
-    const trimmed = email.trim();
+    const trimmed = normalizeEmail(email);
     const local = trimmed.split("@")[0] || "User";
     const { data, error } = await supabase.auth.signUp({
       email: trimmed,
@@ -95,8 +156,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     });
 
+    const debug: AuthDebugInfo = {
+      emailUsed: trimmed,
+      hasSession: !!data?.session,
+      code: error?.code,
+      status: typeof error?.status === "number" ? error.status : undefined,
+      emailConfirmedAt: data?.user?.email_confirmed_at ?? null,
+    };
+
+    if (__DEV__) {
+      console.log("[auth] signUp", {
+        email: trimmed,
+        passwordLength: password.length,
+        ...debug,
+        message: error?.message,
+      });
+    }
+
     if (error) {
-      return { error: new Error(error.message) };
+      return { error: new Error(error.message), debug };
     }
 
     if (data.user) {
@@ -113,12 +191,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    return { error: null };
+    return { error: null, debug };
+  }, []);
+
+  const resetPassword = useCallback(async (email: string) => {
+    const trimmed = normalizeEmail(email);
+    if (!trimmed) {
+      return { error: new Error("Enter your email address first.") };
+    }
+    const redirectTo = Linking.createURL("/");
+    const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
+      redirectTo,
+    });
+    if (__DEV__) {
+      console.log("[auth] resetPasswordForEmail", {
+        email: trimmed,
+        redirectTo,
+        error: error?.message,
+      });
+    }
+    return { error: error ? new Error(error.message) : null };
   }, []);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
     setProfile(null);
+    try {
+      const { error } = await supabase.auth.signOut({ scope: "local" });
+      if (error) {
+        console.warn("signOut:", error.message);
+      }
+    } catch (e) {
+      console.warn("signOut:", e);
+    }
+    setSession(null);
   }, []);
 
   const value = useMemo<AuthContextValue>(
@@ -129,10 +234,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       signIn,
       signUp,
+      resetPassword,
       signOut,
       refreshProfile,
     }),
-    [session, profile, loading, signIn, signUp, signOut, refreshProfile],
+    [session, profile, loading, signIn, signUp, resetPassword, signOut, refreshProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

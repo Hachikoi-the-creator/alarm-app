@@ -7,9 +7,9 @@ import { AuthProvider } from "@/contexts/auth-context";
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <Stack>
-        <Stack.Screen name="index" options={{ title: "Home" }} />
-        <Stack.Screen name="dashboard" options={{ title: "Dashboard" }} />
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(tabs)" />
       </Stack>
     </AuthProvider>
   );
