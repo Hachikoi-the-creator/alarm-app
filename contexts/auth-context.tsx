@@ -36,7 +36,7 @@ type AuthContextValue = {
   signUp: (email: string, password: string) => Promise<AuthOperationResult>;
   resetPassword: (email: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
-  refreshProfile: () => Promise<void>;
+  refreshProfile: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -53,39 +53,18 @@ function profileFromUser(user: User): UserProfile {
   };
 }
 
-async function fetchProfile(userId: string): Promise<UserProfile | null> {
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("display_name, email")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (error) {
-    const missingTable =
-      error.message.includes("schema cache") ||
-      error.message.includes("Could not find the table");
-    if (!missingTable) {
-      console.warn("profiles fetch:", error.message);
-    }
-    return null;
-  }
-
-  return data;
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refreshProfile = useCallback(async () => {
+  const refreshProfile = useCallback(() => {
     const user = session?.user;
     if (!user) {
       setProfile(null);
       return;
     }
-    const row = await fetchProfile(user.id);
-    setProfile(row ?? profileFromUser(user));
+    setProfile(profileFromUser(user));
   }, [session?.user]);
 
   useEffect(() => {
@@ -109,10 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(null);
       return;
     }
-    void (async () => {
-      const row = await fetchProfile(user.id);
-      setProfile(row ?? profileFromUser(user));
-    })();
+    setProfile(profileFromUser(user));
   }, [session?.user?.id, session?.user?.email, session?.user?.user_metadata]);
 
   const signIn = useCallback(async (email: string, password: string) => {
@@ -175,20 +151,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (error) {
       return { error: new Error(error.message), debug };
-    }
-
-    if (data.user) {
-      const { error: upsertError } = await supabase.from("profiles").upsert(
-        {
-          id: data.user.id,
-          email: data.user.email,
-          display_name: local,
-        },
-        { onConflict: "id" },
-      );
-      if (upsertError) {
-        console.warn("profiles upsert:", upsertError.message);
-      }
     }
 
     return { error: null, debug };

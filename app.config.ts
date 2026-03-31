@@ -6,6 +6,11 @@ const { expo } = require("./app.json") as { expo: ExpoConfig };
 export default ({ config }: { config?: Partial<ExpoConfig> } = {}): ExpoConfig => ({
   ...expo,
   ...config,
+  plugins: [
+    ...(Array.isArray(expo.plugins) ? expo.plugins : []),
+    ...(Array.isArray(config?.plugins) ? config.plugins : []),
+    "expo-sqlite",
+  ],
   extra: {
     ...(typeof expo.extra === "object" && expo.extra !== null ? expo.extra : {}),
     ...(typeof config?.extra === "object" && config.extra !== null ? config.extra : {}),
