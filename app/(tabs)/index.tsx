@@ -11,7 +11,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   deleteAlarm,
@@ -168,6 +168,7 @@ function AlarmSection({
 }
 
 export default function HomeTab() {
+  const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const halfScreen = height * 0.5;
 
@@ -241,20 +242,22 @@ export default function HomeTab() {
     }
   };
 
+  const safeTop = { paddingTop: insets.top };
+
   if (!supportsLocalAlarms()) {
     return (
-      <SafeAreaView className="flex-1 bg-background" edges={["top"]}>
+      <View className="flex-1 bg-background" style={safeTop}>
         <View className="flex-1 items-center justify-center px-6">
           <Text className="text-center text-base">
             Open this app on iOS or Android to manage alarms on your device.
           </Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-background" edges={["top"]}>
+    <View className="flex-1 bg-background" style={safeTop}>
       <ScrollView
         className="flex-1"
         contentContainerClassName="gap-6 px-4 pb-10"
@@ -333,6 +336,6 @@ export default function HomeTab() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }

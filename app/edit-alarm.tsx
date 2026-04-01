@@ -12,12 +12,13 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   insertAlarm,
   listAlarms,
   supportsLocalAlarms,
+  updateAlarm,
 } from "@/lib/alarms";
 
 function clampHour(n: number) {
@@ -35,8 +36,14 @@ function clampMinute(n: number) {
 }
 
 export default function EditAlarmScreen() {
+  const insets = useSafeAreaInsets();
   const { id: idParam } = useLocalSearchParams<{ id?: string }>();
   const isCreate = idParam == null || idParam === "";
+
+  const safeAreaPad = {
+    paddingTop: insets.top,
+    paddingBottom: insets.bottom,
+  };
 
   const [loading, setLoading] = useState(!isCreate);
   const [title, setTitle] = useState("");
@@ -102,7 +109,7 @@ export default function EditAlarmScreen() {
         });
       } else {
         const id = Number(idParam);
-        await insertAlarm({
+        await updateAlarm(id, {
           title: title.trim() === "" ? null : title.trim(),
           hour,
           minute,
@@ -112,6 +119,7 @@ export default function EditAlarmScreen() {
           customAlarmSequence: null,
         });
       }
+      router.back();
     } catch (e) {
       Alert.alert("Could not save", e instanceof Error ? e.message : String(e));
     } finally {
@@ -121,7 +129,7 @@ export default function EditAlarmScreen() {
 
   if (!supportsLocalAlarms()) {
     return (
-      <SafeAreaView className="flex-1 bg-background" edges={["top", "bottom"]}>
+      <View className="flex-1 bg-background" style={safeAreaPad}>
         <View className="flex-1 items-center justify-center px-6">
           <Text className="text-center text-base">
             Alarms are available on iOS and Android in this build.
@@ -130,12 +138,12 @@ export default function EditAlarmScreen() {
             <Text>Go back</Text>
           </Pressable>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-background" edges={["top", "bottom"]}>
+    <View className="flex-1 bg-background" style={safeAreaPad}>
       <KeyboardAvoidingView
         className="flex-1"
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -217,6 +225,6 @@ export default function EditAlarmScreen() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
