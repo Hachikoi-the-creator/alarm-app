@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "movie-totrial",
-    "slug": "movie-totrial",
+    "name": "custom-alarm-app",
+    "slug": "custom-alarm-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -19,7 +19,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.hachidev.customalarmapp"
     },
     "web": {
       "output": "static",
@@ -43,6 +44,14 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "supabaseUrl": "",
+      "supabaseAnonKey": "",
+      "router": {},
+      "eas": {
+        "projectId": "e1c508a7-b5d0-454a-9af3-9feab81d3f67"
+      }
     }
   }
 }
